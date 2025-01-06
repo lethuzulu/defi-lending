@@ -1,79 +1,106 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+import "@openzeppelin-contracts/contracts/interfaces/IERC20.sol";
+
+
 contract Lending {
+    // === State Variables ====
+    IERC20 public token;
+
+
 
     //User Balances and Borrowed amounts: Track ETH deposits, withdrawals, and borrowed amounts.
-    // === State Variables ====
-    mapping(address => uint256) public balances;
-    mapping(address => uint256) public borrowed;
-    uint256 public totalEthInContract;
+    mapping(address => uint256) public tokenCollateralBalances;
+    mapping(address => uint256) public tokenBorrowedBalances;
+    uint256 public totalTokensInContract;
 
     // === Events ===
-    event UserHasDepositedEth();
-    event UserHasWithdrawnEth();
-    event UserHasRepaidEth();
-    event UserHasBorrowedEth();
+    event UserHasDepositedTokens();
+    event UserHasWithdrawnTokens();
+    event UserHasRepaidTokens();
+    event UserHasBorrowedTokens();
+
+
+
+    constructor(address _token) {
+        token = IERC20(_token);
+    }
 
     // Deposit Function:  Implement a deposit function for users to add ETH.
     function deposit() public payable {
         //check deposit
-        require(msg.value > 0, "No Ether Transferred");
+        require(msg.value > 0, "Please deposit an amount greater than zero.");
+
+        // *** EOA should call approve on the toekn contract to allow lending contract to spend/transfer its tokens ***
+
+        //transfer toekns from msg.sender to contract
+        token.transferFrom(msg.sender, address(this), amount);
 
         //update balances
-        balances[msg.sender] += msg.value;
-        totalEthInContract += msg.value;
+        tokenCollateralBalances[msg.sender] += amount;
+        totalTokensInContract += amount;
 
         //emit event
-        emit UserHasDepositedEth();
+        emit UserHasDepositedTokens();
     }
 
     //Withdraw Function: Add a withdraw function for user to get their ETH.
     function withdraw(uint256 amount) public {
         //check withdraw amount 
         require(amount > 0, "Specify an amount to withdraw");
-        require(balances[msg.sender] >= amount, "You cannot withdraw more than you have deposited");
+
+        //check that user has an existing balance to withdraw
+        require(tokenCollateralBalances[msg.sender] >= amount, "You do not have enough tokens deposited to withdraw that amount");
 
         //update balances
-        totalEthInContract -= amount;
-        balances[msg.sender] -= amount;
+        tokenCollateralBalances[msg.sender] -= amount;
+        totalTokensInContract -= amount;
 
-        //send eth to user
-        payable(msg.sender).transfer(amount);
+        //transfer tokens to user
+        token.transfer(msg.sender, amount);
 
         //emit event
-        emit UserHasWithdrawnEth();
+        emit UserHasWithdrawnTokens();
     }
 
     //Borrow Function: Create a borrow function for users to take out loans
     function borrow(uint256 amount) public {
         //check borrow amont
         require(amount > 0, "Specify  an amount to borrow");
-        require(amount < totalEthInContract, "Not Enough Eth in Contract to borrow");
+
+        //user can only borrow as much as they have deposited as collateral
+        require(tokenCollateralBalances[msg.sender] >= amount, "You can't borrow more than you have as collateral.");
 
         //update balances
-        borrowed[msg.sender] += amount;
-        totalEthInContract -= amount;
+        tokenBorrowedBalances[msg.sender] += amount;
+        totalTokensInContract -= amount;
         
-        //send eth to user
-        payable(msg.sender).transfer(amount);
+        //transfer tokens to user
+        token.transfer(msg.sender, amount);
 
         //emit event
-        emit UserHasBorrowedEth();
+        emit UserHasBorrowedTokens();
     }
 
     //Repay Function: Develop a repay function for users to repay borrowed ETH
 
-    function repay() public payable {
+    function repay(uint256 amount) public {
         //check repay amount 
-        require(msg.value > 0, "No ethet sent to repay");
+        require(msg.value > 0, "Please specify an amount to repay.");
+
+        //check that the user has an outstanding loan
+        require(tokenBorrowedBalances[msg.sender] > amount, "You do not have an outstanding loan.");
+
+        // transfer tokens to contract
+        token.transferFrom(msg.sender, address(this), amount);
 
         //update balances
-        borrowed[msg.sender] -= msg.value;
-        totalEthInContract += msg.value;
+        tokenBorrowedBalances[msg.sender] -= amount;
+        totalTokensInContract += amount;
 
         //emit event
-        emit UserHasRepaidEth();
+        emit UserHasRepaidTokens();
 
     }
 }
